@@ -78,6 +78,89 @@ server {
 }
 
 ------------------------------------
+sudo nginx -t
+
+sudo systemctl restart nginx.service
+
+-----------------------
+# now we edit /srv/gitlab/config/gitlab.rb 
+# uncomment  # external_url 'GENERATED_EXTERNAL_URL'
+# in this case i use my domain 
+external_url 'https://git.devopskhafan.site'
+------------------------------
+#after that reconfig gitlab by :
+sudo docker exec gitlab gitlab-ctl reconfigure
+
+
+#we need certbot to authenticate our domain and it work on port 80,443 ,but if your service works on another port you can use DNS-01 challenge
+
+# go to cloudflare.com that domain is behind. in DNS part create two TXT record :
+TYPE : TXT
+Name: _acme-challenge.git
+Content: "hello" # we chnge it later
+--------------------
+go to letsencrypt-script.sh
+#!/bin/bash
+DIR="$( cd "$( dirname "${BASH_SOURCE[0]}" )" >/dev/null 2>&1 && pwd )"
+docker run -it --rm --name letsencrypt \
+    -v "${DIR}/etc/letsencrypt:/etc/letsencrypt" \
+    -v "${DIR}/var/lib/letsencrypt:/var/lib/letsencrypt" \
+    certbot/certbot:latest \
+        certonly \
+        -d $1 \
+        -d *.$1 \
+        --manual \
+        --preferred-challenges dns \
+        --server https://acme-v02.api.letsencrypt.org/directory
+------------------
+# run it and give your domain as a argument:
+
+sudo ./letsencrypt_script.sh git.devopskhafan.site
+#this script give 2 unique strings and replace them instead of "hello" in content in cloudflare.com
+# after that you replaced them enter in script till take certificates.
+#so you can also  before enter after 2 unique string check it by this command
+host -t TXT _acme-challenge.git.devopskhafan.site
+or check in this site
+https://toolbox.googleapps.com/apps/dig/#TXT/_acme-challenge.git.devopskhafan.site
+-----------
+so after finishing to take certificate go to /srv/gitlab/config/gitlab.rb again and find letsencrypt: edit them
+
+letsencrypt['enable'] = true
+letsencrypt['contact_emails'] = ['saeednokarizi@gmail.com'] # This should be an array of email addresses to add as contacts
+letsencrypt['auto_renew'] = true
+-----------------------
+#after that reconfig gitlab by :
+sudo docker exec gitlab gitlab-ctl reconfigure
+----------------------------------------
+and then replace certificate that generate letsencrypt with ssl in nginx config
+like this:
+server {
+    listen 8080;
+    server_name git.devopskhafan.site;
+    ssl_certificate /etc/letsencrypt/live/git.devopskhafan.site/fullchain.pem;
+    ssl_certificate_key /etc/letsencrypt/live/git.devopskhafan.site/privkey.pem;
+    root /var/www/html;
+    location / {
+        proxy_pass http://localhost:4000;
+        proxy_http_version 1.1;
+        proxy_set_header Upgrade $http_upgrade;
+        proxy_set_header Connection 'upgrade';
+        proxy_set_header Host $host;
+        proxy_cache_bypass $http_upgrade;
+    }
+
+    location /api {
+        proxy_pass http://localhost:4443;
+        proxy_http_version 1.1;
+        proxy_set_header Upgrade $http_upgrade;
+        proxy_set_header Connection 'upgrade';
+        proxy_set_header Host $host;
+        proxy_cache_bypass $http_upgrade;
+    }
+}
+-------------------
+in mikrotik need to create route forwarding
+/ip firewall nat add chain=dstnat dst-address=46.100.52.24 protocol=tcp dst-port=8080 action=dst-nat to-address=192.168.88.228 to-port=4443(https) or 4000(http)
 
 
 
@@ -92,14 +175,4 @@ server {
 
 
 
-
-
-
-
-
-
-
-
-
-sudo certbot --nginx # ensure that port 80 is free on the sever 
 
