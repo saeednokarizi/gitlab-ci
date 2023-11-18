@@ -1,0 +1,15 @@
+version: '3'
+services:
+  gitlab:
+    image: gitlab/gitlab-ce:v1
+    hostname: git.devopskhafan.site
+    container_name: gitlab
+    ports:
+      - 0.0.0.0:4443:443
+      - 0.0.0.0:4000:80
+    volumes:
+      - /srv/gitlab/config:/etc/gitlab
+      - /srv/gitlab/logs:/var/log/gitlab
+      - /srv/gitlab/data:/var/opt/gitlab
+    restart: always
+
